@@ -4,22 +4,20 @@ import GameObject
 import time
 import math
 from gamedata import GameData
+from GameObject import Asteroid, Ship, Projectile
 
-
-
-
+class LeaderboardEntry:
+    def __init__(self, name, score):
+        self.name = name
+        self.score = score
 
 def isInside(sprite_1: pyasge.Sprite, sprite_2: pyasge.Sprite) -> bool:
     pass
 
-
 class MyASGEGame(pyasge.ASGEGame):
-    
     """
     The main game class
     """
-
-        
 
     def __init__(self, settings: pyasge.GameSettings):
         """
@@ -29,86 +27,131 @@ class MyASGEGame(pyasge.ASGEGame):
             settings (pyasge.GameSettings): The game settings
         """
         pyasge.ASGEGame.__init__(self, settings)
-        
+        self.leaderboard = []
         self.renderer.setClearColour(pyasge.COLOURS.BLACK)
         self.direction_vector = [0, 0]
         self.projectiles = []
         self.last_shot_time = 0
         self.score = 0
-        self.game_over = False  # Add a game over flag
- 
+        self.game_over = False  
+
         self.cooldown_time = 0.25
         self.max_asteroids = 3
-        # create a game data object, we can store all shared game content her
-        # e
+
         self.data = GameData()
         self.data.renderer = self.renderer
         self.data.fonts["MainFont"] = self.data.renderer.loadFont("/data/fonts/KGHAPPY.ttf", 24)
         self.initScoreDisplay()
         self.initGameOverScreen()
-        self.initLivesDisplay()
+
         self.key_states = {"up": False, "down": False, "left": False, "right": False}
         self.data.inputs = self.inputs
-     
+
         self.data.game_res = [settings.window_width, settings.window_height]
 
-        # register the key and mouse click handlers for this class
         self.key_id = self.data.inputs.addCallback(pyasge.EventType.E_KEY, self.keyHandler)
         self.mouse_id = self.data.inputs.addCallback(pyasge.EventType.E_MOUSE_CLICK, self.clickHandler)
 
-        # set the game to the menu
         self.menu = True
         self.play_option = None
         self.exit_option = None
         self.menu_option = 0
 
-        # This is a comment
         self.data.background = pyasge.Sprite()
         self.initBackground()
 
-        #
         self.menu_text = None
         self.start_text = None
         self.initMenu()
 
-        #
         self.scoreboard = None
         self.initScoreboard()
 
-        # Initialising the asteroid
         self.asteroid = GameObject.Asteroid()
         self.initAsteroid()
         self.asteroids = []
         self.spawn_asteroids(5)
 
-        # Initialising player ship
         self.player = GameObject.Ship()
         self.initPlayer()
-
+        self.initLivesDisplay()
         self.projectile = GameObject.Projectile()
         self.initProjectile()
+        self.resetGame()
 
     def initBackground(self) -> bool:
         pass
-    
+
     def initScoreDisplay(self):
+
         if "MainFont" in self.data.fonts:
-            # Adjust instantiation to match the constructor's expectations
-            self.score_text = pyasge.Text(self.data.fonts["MainFont"], "Score: 0", self.data.game_res[0] - 0, 30)
+            self.score_text = pyasge.Text(self.data.fonts["MainFont"], "Score: 0")
+            self.score_text.position = pyasge.Point2D(20, 20)  
+            self.score_text.scale = 1  
             self.score_text.colour = pyasge.COLOURS.WHITE
         else:
             print("Error: MainFont not loaded. Check the font path and ensure it's loaded before initScoreDisplay is called.")
+
     def initGameOverScreen(self):
         self.game_over_text = pyasge.Text(self.data.fonts["MainFont"], "GAME OVER, Press R to restart")
-        self.game_over_text.position = pyasge.Point2D(550, 500)  # Start at 0,0 for manual adjustment
+        self.end_game()
+        leaderboard_text = pyasge.Text(self.data.renderer.getDefaultFont(), "Leaderboard", 400, 350)
+        leaderboard_text.colour = pyasge.COLOURS.WHITE
+        self.data.renderer.render(leaderboard_text)
+
+        y_offset = 400
+        for idx, entry in enumerate(self.leaderboard[:5]):
+            entry_text = pyasge.Text(self.data.renderer.getDefaultFont(), f"{idx + 1}. {entry.name}: {entry.score}",400, y_offset)
+            entry_text.colour = pyasge.COLOURS.WHITE
+            self.data.renderer.render(entry_text)
+            y_offset += 50
+        self.game_over_text.position = pyasge.Point2D(550, 500)  
         self.game_over_text.colour = pyasge.COLOURS.RED
 
+    def handle_asteroid_collision(self, asteroid_index):
+        asteroid = self.asteroids[asteroid_index]
+        if asteroid.sprite.scale > 1:
+            scale_factor = 0.5  
+            for _ in range(2):  
+                new_asteroid = Asteroid()
+                new_asteroid.sprite.x = asteroid.sprite.x
+                new_asteroid.sprite.y = asteroid.sprite.y
+                new_asteroid.sprite.scale = asteroid.sprite.scale * scale_factor
+                new_asteroid.sprite.loadTexture("/data/images/kenney_simple-space/PNG/Retina/meteor_detailedLarge.png")
+                dx, dy = random.uniform(-1, 1), random.uniform(-1, 1)
+                norm = math.sqrt(dx ** 2 + dy ** 2)
+                new_asteroid.move_direction = [dx / norm, dy / norm]
+                new_asteroid.move_speed = random.uniform(1, 5)
+                self.asteroids_to_add.append(new_asteroid)
+        self.asteroids_to_remove.append(asteroid_index)
 
+    def create_smaller_asteroid(self, parent_asteroid):
+        new_asteroid = GameObject.Asteroid()
+        new_asteroid.sprite.x = parent_asteroid.sprite.x
+        new_asteroid.sprite.y = parent_asteroid.sprite.y
+        new_asteroid.sprite.scale = parent_asteroid.sprite.scale / 2  
 
+        dx, dy = random.uniform(-1, 1), random.uniform(-1, 1)
+        norm = math.sqrt(dx ** 2 + dy ** 2)
+        new_asteroid.move_direction = [dx / norm, dy / norm]
+        new_asteroid.move_speed = parent_asteroid.move_speed + random.uniform(0.5, 1.5)  
 
+        return new_asteroid
+
+    def resetGame(self):
+        self.player.lives = 3
+        self.score = 0  
+        self.game_over = False
+        self.menu = True  
+        self.projectiles.clear()  
+        self.asteroids.clear()  
+        self.spawn_asteroids(5)  
+
+        self.score_text.string = f"Score: {self.score}"
+
+        self.lives_text.string = f"Lives: {self.player.lives}"
 
     def initAsteroid(self) -> bool:
-
         if self.asteroid.sprite.loadTexture("/data/images/kenney_simple-space/PNG/Retina/meteor_detailedLarge.png"):
             self.asteroid.move_speed = 8
             self.asteroid.sprite.z_order = -10
@@ -117,18 +160,17 @@ class MyASGEGame(pyasge.ASGEGame):
             self.asteroid.move_direction = [1, 0]
             self.spawn(self.asteroid)
             return True
-        pass
+
+    pass
 
     def initPlayer(self) -> bool:
-        # This code initialises the spaceship code, similar to how the fish were loaded in,
-        # and positions it at the centre of the screen
+
         if self.player.sprite.loadTexture("data/images/kenney_simple-space/PNG/Retina/ship_G.png"):
             self.player.move_speed = 8.0
             self.player.sprite.x = self.data.game_res[0] / 2 - self.player.sprite.width / 2
             self.player.sprite.y = self.data.game_res[1] / 2 - self.player.sprite.height / 2
             self.player.sprite.scale = 0.5
 
-            # This code will ensure that player ship collisions remain consistent, you can leave it how it is
             self.player.collisionSprite.loadTexture("data/images/kenney_simple-space/PNG/Retina/ship_G.png")
             self.player.collisionSprite.x = self.data.game_res[0] / 2 - self.player.sprite.width / 2
             self.player.collisionSprite.y = self.data.game_res[1] / 2 - self.player.sprite.height / 2
@@ -136,50 +178,53 @@ class MyASGEGame(pyasge.ASGEGame):
             return True
         return False
 
+    def initLivesDisplay(self):
+
+        if "MainFont" in self.data.fonts:
+            self.lives_text = pyasge.Text(self.data.fonts["MainFont"], f"Lives: {self.player.lives}")
+
+            self.lives_text.position = pyasge.Point2D(self.score_text.position.x + 150, 20)  
+            self.lives_text.scale = 0.5  
+            self.lives_text.colour = pyasge.COLOURS.WHITE
+        else:
+            print("Error: MainFont not loaded. Check the font path and ensure it's loaded before calling initLivesDisplay.")
+
     def initProjectile(self) -> bool:
-        # This is where you should initialise your projectiles
+
         self.projectile.sprite.loadTexture("/data/images/kenney_simple-space/PNG/Retina/star_tiny.png")
         pass
 
     def spawn(self, gameObject: GameObject) -> None:
-        # This is where you will set up your asteroid spawn
-        # Think about both the starting position of your asteroid
-        # and the starting movement direction
-        # make a plan for proggramatic approach
-
         pass
 
-        
     def initScoreboard(self) -> None:
         pass
-    
+
     def FireBullet(self):
         new_projectile = GameObject.Projectile()
         if time.time() - self.last_shot_time < self.cooldown_time:
-            return 
-        # Calculate the front of the ship based on its rotation
-        # Assuming the ship's rotation is correctly centered and in radians
-        offset_distance = 50  # Adjust based on your ship's size and desired spawn point
+            return
+
+        offset_distance = 50  
         ship_front_x = self.player.sprite.x - 30
         ship_front_y = self.player.sprite.y - 30
 
-        # Adjust the angle if the ship's default facing direction is not upwards
-        angle_offset = math.pi / 2  # Adjust this if your ship's default orientation is not upwards
+        angle_offset = math.pi / 2  
         spawn_x = ship_front_x + offset_distance * math.cos(self.player.sprite.rotation - angle_offset)
         spawn_y = ship_front_y + offset_distance * math.sin(self.player.sprite.rotation - angle_offset)
 
         new_projectile.sprite.x = spawn_x
         new_projectile.sprite.y = spawn_y
         new_projectile.sprite.loadTexture("/data/images/kenney_simple-space/PNG/Retina/star_tiny.png")
-    
-        new_projectile.move_direction = [math.cos(self.player.sprite.rotation - angle_offset), 
+
+        new_projectile.move_direction = [math.cos(self.player.sprite.rotation - angle_offset),
                                          math.sin(self.player.sprite.rotation - angle_offset)]
-        new_projectile.move_speed = 10  # Adjust speed as necessary
+        new_projectile.move_speed = 10  
         self.projectiles.append(new_projectile)
         self.last_shot_time = time.time()
 
     def initMenu(self) -> bool:
-        # Initialising the title text
+
         self.data.fonts["MainFont"] = self.data.renderer.loadFont("/data/fonts/KGHAPPY.ttf", 80)
         self.menu_text = pyasge.Text(self.data.fonts["MainFont"])
         self.menu_text.string = "The Space Game"
@@ -193,98 +238,94 @@ class MyASGEGame(pyasge.ASGEGame):
         self.start_text.colour = pyasge.COLOURS.WHITE
 
         return True
+
     def resetGame(self):
-     # Reset game state
-     self.player.lives = 3  # Reset lives to the initial value
-     self.score = 0  # Reset score
-     self.game_over = False  # Clear the game over flag
+
+        self.player.lives = 3  
+        self.score = 0  
+        self.game_over = False  
+
     def clickHandler(self, event: pyasge.ClickEvent) -> None:
-           if event.button == pyasge.MOUSE.MOUSE_BTN1:  # MOUSE_BTN1 usually represents the left mouse button
-        # Check if the game is not in the menu state
-             if not self.menu:
-            # Fire a bullet
-               self.FireBullet()
+        if event.button == pyasge.MOUSE.MOUSE_BTN1:  
+
+            if not self.menu:
+
+                self.FireBullet()
 
     def keyHandler(self, event: pyasge.KeyEvent) -> None:
         if self.game_over and event.key == pyasge.KEYS.KEY_R and event.action == pyasge.KEYS.KEY_PRESSED:
-         self.resetGame()
+            self.resetGame()
 
-        # Act only if a button has been pressed
         if event.action == pyasge.KEYS.KEY_PRESSED:
 
-            # Closes the game whenever Escape is pressed regardless of game state
             if event.key == pyasge.KEYS.KEY_ESCAPE:
                 exit()
 
-            # If we are currently on the main menu screen
             if self.menu == True:
-                # we check whether specific button (Spacebar in this case)
-                # have been pressed
+
                 if event.key == pyasge.KEYS.KEY_SPACE:
-                    # We change the state from main menu to game screen
+
                     self.menu = False
 
-            # If we are not in menu that means we are in main game screen
             else:
                 if event.key in [pyasge.KEYS.KEY_W, pyasge.KEYS.KEY_UP]:
-                     self.key_states["up"] = True
+                    self.key_states["up"] = True
                 if event.key in [pyasge.KEYS.KEY_S, pyasge.KEYS.KEY_DOWN]:
                     self.key_states["down"] = True
                 if event.key in [pyasge.KEYS.KEY_A, pyasge.KEYS.KEY_LEFT]:
                     self.key_states["left"] = True
                 if event.key in [pyasge.KEYS.KEY_D, pyasge.KEYS.KEY_RIGHT]:
                     self.key_states["right"] = True
-                    
-         
-                # This is where you will implement your in-game inputs
+
                 pass
 
-        # This event is triggered whenever a button is released
         if event.action == pyasge.KEYS.KEY_RELEASED:
             if self.menu == True:
                 pass
             else:
                 if event.key in [pyasge.KEYS.KEY_W, pyasge.KEYS.KEY_UP]:
-                 self.key_states["up"] = False
+                    self.key_states["up"] = False
                 if event.key in [pyasge.KEYS.KEY_S, pyasge.KEYS.KEY_DOWN]:
                     self.key_states["down"] = False
                 if event.key in [pyasge.KEYS.KEY_A, pyasge.KEYS.KEY_LEFT]:
                     self.key_states["left"] = False
                 if event.key in [pyasge.KEYS.KEY_D, pyasge.KEYS.KEY_RIGHT]:
                     self.key_states["right"] = False
-                # You can track which buttons have been released here
-                pass
-            
 
+                pass
 
     def check_collision(self, sprite_1: pyasge.Sprite, sprite_2: pyasge.Sprite) -> bool:
-        # Check if the right edge of sprite_1 is left of the left edge of sprite_2
-        if sprite_1.x + sprite_1.width < sprite_2.x:
-            return False
-        # Check if the left edge of sprite_1 is right of the right edge of sprite_2
-        if sprite_1.x > sprite_2.x + sprite_2.width:
-            return False
-        # Check if the bottom edge of sprite_1 is above the top edge of sprite_2
-        if sprite_1.y + sprite_1.height < sprite_2.y:
-            return False
-        # Check if the top edge of sprite_1 is below the bottom edge of sprite_2
-        if sprite_1.y > sprite_2.y + sprite_2.height:
-            return False
-        return True
-    def initLivesDisplay(self):
-    # Assuming "MainFont" is already loaded as in initScoreDisplay
-        self.lives_text = pyasge.Text(self.data.fonts["MainFont"], "Lives: 3")
-        self.lives_text.position = pyasge.Point2D(self.data.game_res[0] - 0, 60)  # Adjust position as needed
-        self.lives_text.colour = pyasge.COLOURS.WHITE
-    
-    def update(self, game_time: pyasge.GameTime) -> None:
 
+        sprite_1_width_scaled = sprite_1.width * sprite_1.scale
+        sprite_1_height_scaled = sprite_1.height * sprite_1.scale
+
+        sprite_2_width_scaled = sprite_2.width * sprite_2.scale
+        sprite_2_height_scaled = sprite_2.height * sprite_2.scale
+
+        if sprite_1.x + sprite_1_width_scaled < sprite_2.x:
+            return False
+
+        if sprite_1.x > sprite_2.x + sprite_2_width_scaled:
+            return False
+
+        if sprite_1.y + sprite_1_height_scaled < sprite_2.y:
+            return False
+
+        if sprite_1.y > sprite_2.y + sprite_2_height_scaled:
+            return False
+
+        return True
+
+    def update(self, game_time: pyasge.GameTime) -> None:
+        self.asteroids_to_add = []
+        self.asteroids_to_remove = []
+        self.score_text.string = f"Score: {self.score}"
         if self.menu:
 
             pass
         elif self.game_over:
-         return
-    
+            return
+
         else:
             x_dir = 0
             y_dir = 0
@@ -296,62 +337,91 @@ class MyASGEGame(pyasge.ASGEGame):
                 x_dir -= 1
             if self.key_states["right"]:
                 x_dir += 1
-                
-   
-        
-      
-            
-               
-         
-            # update the game here
+
             self.player.update_move_direction([x_dir, y_dir])
             self.player.Move()
-            self.lives_text.string = f"Lives: {self.player.lives}"  # Update lives display
+            self.lives_text.string = f"Lives: {self.player.lives}"  
 
             for asteroid in self.asteroids:
-             self.AsteroidScreenWrap(asteroid)
-             
-             asteroid.Move() 
-             self.ShipScreenWrap()
-            for asteroid in self.asteroids[:]:  # Use a copy of the list to avoid modification issues
-             if self.check_collision(self.player.sprite, asteroid.sprite):
-                self.asteroids.remove(asteroid)  # Remove the collided asteroid
-                self.reset_player_position()  # Reset player's position or handle life loss
-                self.player.lives -= 1  # Assuming you have a lives attribute
-                if self.player.lives <= 0:
-                 self.game_over = True
-                break            
-             for projectile in self.projectiles:
-               projectile.Move()
-            for projectile in self.projectiles[:]:
-             for asteroid in self.asteroids[:]:
-                if self.check_collision(projectile.sprite, asteroid.sprite):
-                    self.asteroids.remove(asteroid)
-                    self.projectiles.remove(projectile)
-                    self.score += 1  # Increase the score by 1
-                    self.score_text.string = f"Score: {self.score}"  # Update score text
+                self.AsteroidScreenWrap(asteroid)
+
+                asteroid.Move()
+                self.ShipScreenWrap()
+            for asteroid in self.asteroids[:]:  
+                if self.check_collision(self.player.sprite, asteroid.sprite):
+                    self.asteroids.remove(asteroid)  
+                    self.reset_player_position()  
+                    self.player.lives -= 1  
+                    if self.player.lives <= 0:
+                        self.game_over = True
                     break
+            for projectile in self.projectiles[:]:  
+                projectile.Move()
+                for i, asteroid in enumerate(self.asteroids):
+                    if self.check_collision(projectile.sprite, asteroid.sprite):
+                        self.handle_asteroid_collision(i)  
+                        self.projectiles.remove(projectile)
+                        self.score += 1  
+                        self.score_text.string = f"Score: {self.score}"
+                        break  
+
+            for i in sorted(self.asteroids_to_remove, reverse=True):
+                del self.asteroids[i]
+            self.asteroids.extend(self.asteroids_to_add)
 
             while len(self.asteroids) < self.max_asteroids:
-                self.spawn_asteroids(1) 
-
-  
+                self.spawn_asteroids(1)
 
             pass
+    def generate_unique_leaderboard_entry(self, base_name):
+        count = 1
+        new_name = base_name
+        while any(entry.name == new_name for entry in self.leaderboard):
+            count += 1
+            new_name = f"{base_name}{count}"
+        return new_name
+
+    def generate_random_leaderboard_entries(self):
+        possible_names = ["Alice", "Bob", "Charlie", "David", "Eve", "Steve", "Quinn", "Richard", "Wojciech"]
+        for _ in range(5):
+            name = random.choice(possible_names)
+            unique_name = self.generate_unique_leaderboard_entry(name)
+            score = random.randint(5, 20)
+            self.leaderboard.append(LeaderboardEntry(unique_name, score))
+
+    def bubble_sort_leaderboard(self):
+
+        n = len(self.leaderboard)
+        for i in range(n):
+            for j in range(0, n - i - 1):
+                if self.leaderboard[j].score < self.leaderboard[j + 1].score:
+                    self.leaderboard[j], self.leaderboard[j + 1] = self.leaderboard[j + 1], self.leaderboard[j]
+                elif self.leaderboard[j].score == self.leaderboard[j + 1].score:
+
+                    if self.leaderboard[j].name > self.leaderboard[j + 1].name:
+                        self.leaderboard[j], self.leaderboard[j + 1] = self.leaderboard[j + 1], self.leaderboard[j]
+
+    def end_game(self):
+
+        self.leaderboard.clear()
+
+        self.leaderboard.append(LeaderboardEntry("YOU", self.score))
+
+        self.generate_random_leaderboard_entries()
+
+        self.bubble_sort_leaderboard()
+
     def AsteroidScreenWrap(self, asteroid: GameObject.Asteroid):
-        # Right boundary
+
         if asteroid.sprite.x > self.data.game_res[0]:
             asteroid.sprite.x = -asteroid.sprite.width
 
-        # Left boundary
         elif asteroid.sprite.x < -asteroid.sprite.width:
             asteroid.sprite.x = self.data.game_res[0]
 
-        # Bottom boundary
         if asteroid.sprite.y > self.data.game_res[1]:
             asteroid.sprite.y = -asteroid.sprite.height
 
-        # Top boundary
         elif asteroid.sprite.y < -asteroid.sprite.height:
             asteroid.sprite.y = self.data.game_res[1]
 
@@ -359,29 +429,21 @@ class MyASGEGame(pyasge.ASGEGame):
         self.player.sprite.x = self.data.game_res[0] / 2 - self.player.sprite.width / 2
         self.player.sprite.y = self.data.game_res[1] / 2 - self.player.sprite.height / 2
 
-
-
-
     def spawn_asteroids(self, number_of_asteroids: int):
         for _ in range(number_of_asteroids):
             new_asteroid = GameObject.Asteroid()
-        
-            # Randomly position the asteroid, ensuring it's within screen bounds
+
             new_asteroid.sprite.x = random.uniform(0, self.data.game_res[0] - new_asteroid.sprite.width)
             new_asteroid.sprite.y = random.uniform(0, self.data.game_res[1] - new_asteroid.sprite.height)
-        
-            # Set a random movement direction
+
             angle = random.uniform(0, 2 * math.pi)
             new_asteroid.move_direction = [math.cos(angle), math.sin(angle)]
-            new_asteroid.move_speed = random.uniform(5, 10)  # Example speed range
-        
-            # Load texture, set z_order, etc.
+            new_asteroid.move_speed = random.uniform(5, 10)  
+
             new_asteroid.sprite.loadTexture("/data/images/kenney_simple-space/PNG/Retina/meteor_detailedLarge.png")
             new_asteroid.sprite.z_order = -10
-        
+
             self.asteroids.append(new_asteroid)
-
-
 
     def render(self, game_time: pyasge.GameTime) -> None:
         """
@@ -392,47 +454,52 @@ class MyASGEGame(pyasge.ASGEGame):
         """
 
         if self.menu:
-            # Render the menu screen here
+
             self.data.renderer.render(self.menu_text)
 
             self.data.renderer.render(self.start_text)
 
             pass
-        elif self.game_over:
-            self.data.renderer.render(self.game_over_text)
+        elif self.game_over and self.player.lives <= 0:
+         self.data.renderer.render(self.game_over_text)
+
+         leaderboard_text = pyasge.Text(self.data.fonts["MainFont"], "Leaderboard", )
+
+         leaderboard_text.position = pyasge.Point2D(620, 100)  
+         leaderboard_text.colour = pyasge.COLOURS.WHITE
+         leaderboard_text.scale = 0.8
+         self.data.renderer.render(leaderboard_text)
+
+         y_offset = 150 
+         for idx, entry in enumerate(self.leaderboard[:5]):
+             entry_text = pyasge.Text(self.data.fonts["MainFont"], f"{idx + 1}. {entry.name}: {entry.score}")
+             entry_text.position = pyasge.Point2D(600, y_offset + idx * 50)  
+             entry_text.colour = pyasge.COLOURS.WHITE
+             entry_text.scale = 0.8
+             self.data.renderer.render(entry_text)
         else:
-            # render the game here
+
             self.data.renderer.render(self.score_text)
             for asteroid in self.asteroids:
-             self.data.renderer.render(asteroid.sprite)
+                self.data.renderer.render(asteroid.sprite)
             self.data.renderer.render(self.player.sprite)
             for projectile in self.projectiles:
-             self.data.renderer.render(projectile.sprite)
+                self.data.renderer.render(projectile.sprite)
             self.data.renderer.render(self.lives_text)
-            
-        
+
     def ShipScreenWrap(self):
-        # Right boundary
+
         if self.player.sprite.x > self.data.game_res[0]:
             self.player.sprite.x = -self.player.sprite.width
 
-        # Left boundary
         elif self.player.sprite.x + self.player.sprite.width < 0:
             self.player.sprite.x = self.data.game_res[0]
 
-        # Bottom boundary
         if self.player.sprite.y > self.data.game_res[1]:
             self.player.sprite.y = -self.player.sprite.height
 
-        # Top boundary
         elif self.player.sprite.y + self.player.sprite.height < 0:
             self.player.sprite.y = self.data.game_res[1]
-
-
-
-
-
-
 
 def main():
     """
@@ -452,7 +519,6 @@ def main():
     settings.vsync = pyasge.Vsync.ADAPTIVE
     game = MyASGEGame(settings)
     game.run()
-
 
 if __name__ == "__main__":
     main()

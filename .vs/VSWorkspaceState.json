@@ -1,7 +1,8 @@
 {
   "ExpandedNodes": [
     "",
-    "\\env"
+    "\\env",
+    "\\__pycache__"
   ],
   "SelectedNode": "\\tutorial_game.py",
   "PreviewInSolutionExplorer": false
